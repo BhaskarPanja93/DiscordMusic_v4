@@ -72,6 +72,7 @@ def activateGuild(guild:Guild)->None:
     manager = ManagedGuild(botObj, guild, mysqlPool, logger)
     guildManagers[guild] = manager
     botObj.loop.create_task(manager.importSettings())
+    botObj.tree.clear_commands(guild=guild)
     botObj.tree.copy_global_to(guild=guild)
     botObj.loop.create_task(botObj.tree.sync(guild=guild))
     logger.success("COMMANDS", f"Synced for Guild (ID: {guild.id}) {guild.name}")

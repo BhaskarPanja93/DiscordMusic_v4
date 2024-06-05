@@ -61,7 +61,7 @@ class SongManager:
                     if stringType in [urlTypes.spotify_album, urlTypes.spotify_playlist, urlTypes.spotify_artist, urlTypes.youtube_playlist]:
                         await self.fetchPlayListSongID(stringType.value, string)
                     else:
-                        await self.fetchIndividualSongID(stringType.value, string)
+                        await self.fetchIndividualSongID(string)
                     return True, ""
 
 
@@ -107,9 +107,9 @@ class SongManager:
             await self.__nextSong()
 
 
-    async def fetchIndividualSongID(self, stringType:urlTypes, string:str):
+    async def fetchIndividualSongID(self, string:str):
         url = f"http://127.0.0.1:{Constants.storagePort.value}{storageRoutes.requestID.value}"
-        data = {"type": stringType, "string": string, "priority": 1}
+        data = {"string": string, "priority": 1}
         while True:
             try:
                 async with ClientSession() as session:

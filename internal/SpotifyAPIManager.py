@@ -1,6 +1,6 @@
 from time import time, sleep
 
-from spotipy import Spotify,SpotifyClientCredentials, CacheFileHandler
+from spotipy import Spotify, SpotifyClientCredentials, CacheFileHandler
 
 class RateLimitedSpotify(Spotify):
     def __init__(self, *args, **kwargs):

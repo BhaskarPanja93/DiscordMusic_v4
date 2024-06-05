@@ -186,3 +186,66 @@ class CommonMethods:
 class CustomErrors:
     class noResultYTDLP(Exception):
         pass
+
+
+class Tables:
+    class guildSettings(Enum):
+        selfName = "guild_settings"
+        botID = "bot_id"
+        guildID = "guild_id"
+        volume = "volume"
+        textChannelID = "text_channel_id"
+        voiceChannelID = "voice_channel_id"
+    class lastData(Enum):
+        selfName = "last_data"
+        offset = "offset"
+        genre = "genre"
+        fetchingYear = "fetching_year"
+        fetched = "fetched"
+    class lyricsDara(Enum):
+        selfName = "lyrics_data"
+        songID = "_id"
+        lyrics = "lyrics"
+    class newSpotifyURLS(Enum):
+        selfName = "new_spotify_urls"
+        url = "url"
+        genre = "genre"
+        year = "year"
+        fetched = "fetched"
+    class otherNames(Enum):
+        selfName = "other_names"
+        songID = "_id"
+        songName = "name"
+    class repeatID(Enum):
+        selfName = "repeat_id"
+        newID = "new_id"
+        realID = "real_id"
+        createdAt = "created_at"
+    class requestCookies(Enum):
+        selfName = "request_cookies"
+        accountID = "id"
+        value = "value"
+        working = "working"
+        password = "password"
+    class requestorData(Enum):
+        selfName = "requestor_data"
+        songID = "_id"
+        requestorID = "person"
+    class searchData(Enum):
+        selfName = "search_data"
+        songID = "_id"
+        realName = "real_name"
+        spotify = "spotify"
+        youtube = "yt"
+    class songData(Enum):
+        selfName = "song_data"
+        songID = "_id"
+        duration = "duration"
+        thumbnail = "thumbnail"
+        audioURL = "audio_url"
+        audioURLCreatedAt = "audio_url_created_at"
+    class spotifyAPIS(Enum):
+        selfName = "spotify_apis"
+        clientID = "client_id"
+        secret = "secret"
+        owner = "owner"

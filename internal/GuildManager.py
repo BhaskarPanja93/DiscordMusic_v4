@@ -6,6 +6,7 @@ from pooledMySQL import Manager as MySQLManager
 
 from ModifiedBot import ModifiedAutoShardedBot
 from SongManager import SongManager
+from Enum import Tables
 
 
 class ManagedGuild:
@@ -29,12 +30,15 @@ class ManagedGuild:
 
 
     async def importSettings(self):
-        result = self.mySQLPool.execute(f"SELECT * from guild_settings where guild_id=\"{self.guildObj.id}\" and bot_id=\"{self.botObj.application_id}\"")
-        if len(result):
-            resultTup = result[0]
-            volume = resultTup[2]
-            textChannelID = int(resultTup[3])
-            voiceChannelID = int(resultTup[4])
+        result = self.mySQLPool.execute(f"SELECT {Tables.guildSettings.volume.value},{Tables.guildSettings.textChannelID.value},{Tables.guildSettings.voiceChannelID.value} "
+                                        f"from {Tables.guildSettings.selfName.value} "
+                                        f"where {Tables.guildSettings.guildID.value}=\"{self.guildObj.id}\" and {Tables.guildSettings.botID.value}=\"{self.botObj.application_id}\" "
+                                        f"LIMIT 1")
+        if len(result) != 0:
+            resultDict = result[0]
+            volume = resultDict[Tables.guildSettings.volume.value]
+            textChannelID = int(resultDict[Tables.guildSettings.textChannelID.value])
+            voiceChannelID = int(resultDict[Tables.guildSettings.voiceChannelID.value])
             allChannels = await self.guildObj.fetch_channels()
             for channel in allChannels:
                 if channel.id == textChannelID != 0:
@@ -44,7 +48,7 @@ class ManagedGuild:
             self.songPlayer.setVolume(volume)
 
         else:
-            self.mySQLPool.execute(f"INSERT into guild_settings values("
+            self.mySQLPool.execute(f"INSERT into {Tables.guildSettings.selfName.value} values("
                                    f"\"{self.botObj.application_id}\", "
                                    f"\"{self.guildObj.id}\", "
                                    f"{self.songPlayer.volume}, "
@@ -119,7 +123,9 @@ class ManagedGuild:
             old = self.textChannel
             self.textChannelID = channel.id
             self.textChannel = await self.guildObj.fetch_channel(self.textChannelID)
-            self.mySQLPool.execute(f"UPDATE guild_settings set text_channel_id=\"{self.textChannelID}\" where guild_id=\"{self.guildObj.id}\" and bot_id=\"{self.botObj.user.id}\"")
+            self.mySQLPool.execute(f"UPDATE {Tables.guildSettings.selfName.value} "
+                                   f"set {Tables.guildSettings.textChannelID.value}=\"{self.textChannelID}\" "
+                                   f"where {Tables.guildSettings.guildID.value}=\"{self.guildObj.id}\" and {Tables.guildSettings.botID.value}=\"{self.botObj.user.id}\"")
             self.logger.success("TEXT-CHANNEL", f"Updated {old}->{self.textChannel} (ID: {self.guildObj.id}) {self.guildObj.name}")
             return True, ""
         except Exception as e:

@@ -13,8 +13,8 @@ from bs4 import BeautifulSoup
 from randomisedString import Generator as randomStringGenerator
 from customisedLogs import Manager as LogManager
 
-from apps import *
-from Enum import storageRoutes, CommonMethods, urlTypes, CustomErrors, Constants, folderLocation
+from dynamicWebsite import createApps, BaseViewer
+from Enum import storageRoutes, CommonMethods, urlTypes, CustomErrors, Constants, folderLocation, Tables
 from CustomSong import Song
 from SpotifyAPIManager import RateLimitedSpotify, SpotifyClientCredentials, CacheFileHandler
 
@@ -26,10 +26,12 @@ tempPausedIDS = []
 randomGenerator = randomStringGenerator()
 cookiejarCookies = yt_dlp.cookies.load_cookies(f"{folderLocation}temp_internal/cookies.txt", None, None)
 HEADER_FOR_REQUEST = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.4664.110 Safari/537.36'}
-spotify_apis_secrets = sqlPool.execute("SELECT client_id, secret from spotify_apis")
+
+spotify_apis_secrets = sqlPool.execute(f"SELECT {Tables.spotifyAPIS.clientID.value}, {Tables.spotifyAPIS.secret.value} "
+                                       f"from {Tables.spotifyAPIS.selfName.value}")
 spotifyApis = []
-for client_id_tup in spotify_apis_secrets:
-    client_id, secret = client_id_tup
+for client_id_dict in spotify_apis_secrets:
+    client_id, secret = client_id_dict[Tables.spotifyAPIS.clientID.value], client_id_dict[Tables.spotifyAPIS.secret.value]
     sp_api = RateLimitedSpotify(auth_manager=SpotifyClientCredentials(client_id=client_id, client_secret=secret, cache_handler=CacheFileHandler(f"{folderLocation}temp_internal/spotify_api_{client_id}")))
     sp_api.requests_timeout = 10
     sp_api.retries = 1
@@ -58,10 +60,24 @@ def addNewSongToDB(song:Song):
     song.name = CommonMethods.cleanedTrackName(song.name)
     if song.allyName:
         song.allyName = CommonMethods.cleanedTrackName(song.allyName)
-        if not sqlPool.execute(f"SELECT _id from other_names where name=\"{CommonMethods.cleanedTrackName(song.allyName.lower())}\" limit 1"):
-            sqlPool.execute(f"INSERT INTO other_names values (\"{song.ID}\", \"{CommonMethods.cleanedTrackName(song.allyName.lower())}\")")
-    sqlPool.execute(f"INSERT INTO song_data values (\"{song.ID}\", {song.duration}, \"{song.thumbnail}\", \"{song.audioURL}\", now())")
-    sqlPool.execute(f"INSERT INTO search_data values (\"{song.ID}\", \"{CommonMethods.cleanedTrackName(song.name)}\", \"{song.spotify}\", \"{song.yt}\")")
+        if not sqlPool.execute(f"SELECT _id from {Tables.otherNames.selfName.value} "
+                               f"where {Tables.otherNames.songName.value}=\"{CommonMethods.cleanedTrackName(song.allyName.lower())}\" "
+                               f"LIMIT 1"):
+            sqlPool.execute(f"INSERT INTO {Tables.otherNames.selfName.value} values("
+                            f"\"{song.ID}\", "
+                            f"\"{CommonMethods.cleanedTrackName(song.allyName.lower())}\")")
+    sqlPool.execute(f"INSERT INTO {Tables.songData.selfName.value} "
+                    f"values ("
+                    f"\"{song.ID}\", "
+                    f"{song.duration}, "
+                    f"\"{song.thumbnail}\", "
+                    f"\"{song.audioURL}\", "
+                    f"now())")
+    sqlPool.execute(f"INSERT INTO {Tables.searchData.selfName.value} values ("
+                    f"\"{song.ID}\", "
+                    f"\"{CommonMethods.cleanedTrackName(song.name)}\", "
+                    f"\"{song.spotify}\", "
+                    f"\"{song.yt}\")")
     logger.success("ADD-DB", f"Added {song.name}")
 
 
@@ -161,7 +177,7 @@ def playlistExtractor(stringType:str, string):
     listID = []
     for item in list(return_dict.keys()):
         urlType, link = CommonMethods.urlStripper(item)
-        songID = fetchSongID(urlType.value, link, 0)["songID"]
+        songID = fetchSongID(link, 0)["songID"]
         listID.append(songID)
     logger.success("PL-EXTRACT", f"Fetched {string} : {len(listID)}")
     return dumps(listID)
@@ -267,9 +283,14 @@ def fetchNewSong(chosenID:str, stringType:str, stringValue:str):
         addNewSongToDB(createdSong)
     else:
         print("[REPEAT]", songID, createdSong.name)
-        sqlPool.execute(f"INSERT INTO repeat_id values (\"{chosenID}\", \"{songID}\", now())")
+        sqlPool.execute(f"INSERT INTO {Tables.repeatID.selfName.value} values ("
+                        f"\"{chosenID}\", "
+                        f"\"{songID}\","
+                        f" now())")
     #print(createdSong.spotify)
-    sqlPool.execute(f"UPDATE new_spotify_urls set fetched=1 where url=\"https://{createdSong.spotify}\"")
+    sqlPool.execute(f"UPDATE {Tables.newSpotifyURLS.selfName.value} "
+                    f"set fetched=1 "
+                    f"where url=\"https://{createdSong.spotify}\"")
 
 
 def checkRepeated(song:Song):
@@ -277,23 +298,25 @@ def checkRepeated(song:Song):
     realID = None
     availableValues = []
 
-    r = sqlPool.execute(f"SELECT _id, name from other_names where "
-                          f"name=\"{CommonMethods.cleanedTrackName(song.name.lower())}\" or "
-                          f"name=\"{song.yt}\" or "
-                          f"name=\"{song.spotify}\" "
-                          f"limit 3")
+    r = sqlPool.execute(f"SELECT {Tables.otherNames.songID.value}, {Tables.otherNames.songName.value} "
+                        f"from {Tables.otherNames.selfName.value} where "
+                        f"{Tables.otherNames.songName.value}=\"{CommonMethods.cleanedTrackName(song.name.lower())}\" or "
+                        f"{Tables.otherNames.songName.value}=\"{song.yt}\" or "
+                        f"{Tables.otherNames.songName.value}=\"{song.spotify}\" "
+                        f"limit 3")
     for tup in r:
-        realID, value = tup
+        realID, value = tup[Tables.otherNames.songID.value], tup[Tables.otherNames.songName.value]
         availableValues.append(value if type(value)==str else value.decode())
 
 
-    r = sqlPool.execute(f"SELECT _id, real_name, yt, spotify from search_data where "
-                          f"real_name=\"{CommonMethods.cleanedTrackName(song.name)}\" or "
-                          f"yt=\"{song.yt}\" or "
-                          f"spotify=\"{song.spotify}\" "
-                          f"limit 3")
+    r = sqlPool.execute(f"SELECT {Tables.searchData.songID.value}, {Tables.searchData.realName.value}, {Tables.searchData.youtube.value}, {Tables.searchData.spotify.value} "
+                        f"from {Tables.searchData.selfName.value} where "
+                        f"{Tables.searchData.realName.value}=\"{CommonMethods.cleanedTrackName(song.name)}\" or "
+                        f"{Tables.searchData.youtube.value}=\"{song.yt}\" or "
+                        f"{Tables.searchData.spotify.value}=\"{song.spotify}\" "
+                        f"limit 3")
     for tup in r:
-        _id, real_name, yt, spotify = tup
+        _id, real_name, yt, spotify = tup[Tables.searchData.songID.value], tup[Tables.searchData.realName.value], tup[Tables.searchData.youtube.value], tup[Tables.searchData.spotify.value]
         real_name = real_name if type(real_name)==str else real_name.decode()
         yt = yt if type(yt)==str else yt.decode()
         spotify = spotify if type(spotify)==str else spotify.decode()
@@ -312,34 +335,51 @@ def checkRepeated(song:Song):
         for para in [CommonMethods.cleanedTrackName(song.allyName), CommonMethods.cleanedTrackName(song.name.lower()), song.yt, song.spotify]:
             para = para.strip()
             if para and para not in availableValues:
-                sqlPool.execute(f"INSERT INTO other_names values (\"{realID}\", \"{para}\")",catchErrors=True)
-        sqlPool.execute(f"UPDATE song_data set audio_url=\"{song.audioURL}\", audio_url_created_at=now() where _id=\"{realID}\"")
+                sqlPool.execute(f"INSERT INTO {Tables.otherNames.selfName.value} "
+                                f"values (\"{realID}\", \"{para}\")",
+                                catchErrors=True)
+        sqlPool.execute(f"UPDATE {Tables.songData.selfName.value} "
+                        f"set {Tables.songData.audioURL.value}=\"{song.audioURL}\", {Tables.songData.audioURLCreatedAt.value}=now() where "
+                        f"{Tables.songData.songID.value}=\"{realID}\"")
     return realID
 
 
-def fetchSongID(stringType:str, stringValue:str, priority:int|None, threaded=True):
+def fetchSongID(stringValue:str, priority:int|None, threaded=True):
     logger.skip("FETCH-ID", f"Fetching ID for {stringValue}")
+    stringType = CommonMethods.songStringIdentifier(stringValue)
     songID = None
-    otherNamesTupList = sqlPool.execute(f"SELECT _id from other_names where name=\"{CommonMethods.cleanedTrackName(stringValue).lower() if stringType == urlTypes.name.value else stringValue}\" limit 1")
-    if otherNamesTupList and otherNamesTupList[0]:
-        songID = otherNamesTupList[0][0]
+    otherNamesDictList = sqlPool.execute(f"SELECT {Tables.otherNames.songID.value} from {Tables.otherNames.selfName.value} where "
+                                        f"{Tables.otherNames.songName.value}=\"{CommonMethods.cleanedTrackName(stringValue).lower() if stringType == urlTypes.name.value else stringValue}\" "
+                                        f"limit 1")
+    if otherNamesDictList and otherNamesDictList[0]:
+        songID = otherNamesDictList[0][Tables.otherNames.songID.value]
     elif stringType == urlTypes.name.value:
-        realNamesTupList = sqlPool.execute(f"SELECT _id from search_data where real_name=\"{CommonMethods.cleanedTrackName(stringValue)}\" limit 1")
-        if realNamesTupList and realNamesTupList[0]:
-            songID = realNamesTupList[0][0]
+        realNamesDictList = sqlPool.execute(f"SELECT {Tables.searchData.songID.value} from {Tables.searchData.selfName.value} where "
+                                           f"{Tables.searchData.realName.value}=\"{CommonMethods.cleanedTrackName(stringValue)}\" "
+                                           f"limit 1")
+        if realNamesDictList and realNamesDictList[0]:
+            songID = realNamesDictList[0][Tables.searchData.songID.value]
     elif stringType == urlTypes.youtube_url.value:
-        YTURLTupList = sqlPool.execute(f"SELECT _id from search_data where yt=\"{stringValue}\" limit 1")
-        if YTURLTupList and YTURLTupList[0]:
-            songID = YTURLTupList[0][0]
+        YTURLDictList = sqlPool.execute(f"SELECT {Tables.searchData.songID.value} from {Tables.searchData.selfName.value} where "
+                                       f"{Tables.searchData.youtube.value}=\"{stringValue}\" "
+                                       f"limit 1")
+        if YTURLDictList and YTURLDictList[0]:
+            songID = YTURLDictList[0][Tables.searchData.songID.value]
     elif stringType == urlTypes.spotify_url.value:
-        spotifyURLTupList = sqlPool.execute(f"SELECT _id from search_data where spotify=\"{stringValue}\" limit 1")
-        if spotifyURLTupList and spotifyURLTupList[0]:
-            songID = spotifyURLTupList[0][0]
+        spotifyURLDictList = sqlPool.execute(f"SELECT {Tables.searchData.songID.value} from {Tables.searchData.selfName.value} where "
+                                            f"{Tables.searchData.spotify.value}=\"{stringValue}\" "
+                                            f"limit 1")
+        if spotifyURLDictList and spotifyURLDictList[0]:
+            songID = spotifyURLDictList[0][Tables.searchData.songID.value]
     logger.skip("FETCH-ID", f"Old ID {songID} for {stringValue}")
     if songID is None:
         while True:
             songID = randomGenerator.AlphaNumeric(1, 50)
-            if songID and not sqlPool.execute(f"SELECT _id from song_data where _id=\"{songID}\" limit 1") and not sqlPool.execute(f"SELECT repeat_id from repeat_id where repeat_id=\"{songID}\" limit 1") and freezeID(songID):
+            if (songID and not sqlPool.execute(f"SELECT {Tables.songData.songID.value} from {Tables.songData.selfName.value} where "
+                                              f"{Tables.songData.songID.value}=\"{songID}\" limit 1")
+                    and not sqlPool.execute(f"SELECT {Tables.repeatID.realID.value} from {Tables.repeatID.selfName.value} where "
+                                            f"{Tables.repeatID.realID.value}=\"{songID}\" limit 1")
+                    and freezeID(songID)):
                 logger.skip("FETCH-ID", f"New ID generated for {stringValue}")
                 break
         if threaded:
@@ -352,24 +392,30 @@ def fetchSongID(stringType:str, stringValue:str, priority:int|None, threaded=Tru
 def fetchSongData(ID:str, priority:str):
     logger.skip("RETRIEVE", f"Retrieving {ID}")
     song:Song = Song()
-    while not sqlPool.execute(f"SELECT _id from search_data where _id=\"{ID}\" limit 1"):
-        repeatIDTupList = sqlPool.execute(f"SELECT real_id from repeat_id where repeat_id=\"{ID}\" limit 1")
-        if repeatIDTupList and repeatIDTupList[0]:
-            sqlPool.execute(f"DELETE from repeat_id where repeat_id=\"{ID}\"")
-            ID = repeatIDTupList[0][0]
+    while not sqlPool.execute(f"SELECT {Tables.searchData.songID.value} "
+                              f"from {Tables.searchData.selfName.value} where "
+                              f"{Tables.searchData.songID.value}=\"{ID}\" limit 1"):
+        repeatIDDictList = sqlPool.execute(f"SELECT {Tables.repeatID.realID.value} "
+                                          f"from {Tables.repeatID.selfName.value} where "
+                                          f"{Tables.repeatID.newID.value}=\"{ID}\" limit 1")
+        if repeatIDDictList and repeatIDDictList[0]:
+            sqlPool.execute(f"DELETE from {Tables.repeatID.selfName.value} where {Tables.repeatID.newID.value}=\"{ID}\"")
+            ID = repeatIDDictList[0][Tables.repeatID.realID.value]
         logger.failed("FETCH", f"{ID} not in search_data")
         sleep(0.1)
-    while not sqlPool.execute(f"SELECT _id from song_data where _id=\"{ID}\" limit 1"):
+    while not sqlPool.execute(f"SELECT {Tables.songData.songID.value} from {Tables.songData.selfName.value} where {Tables.songData.songID.value}=\"{ID}\" limit 1"):
         logger.failed("FETCH", f"{ID} not in song_data")
         sleep(0.1)
-    song.ID, song.name, song.spotify, song.yt = sqlPool.execute(f"SELECT * from search_data where _id=\"{ID}\" limit 1")[0]
+    finalDict = sqlPool.execute(f"SELECT * from {Tables.searchData.selfName.value} where _id=\"{ID}\" limit 1")[0]
+    song.ID, song.name, song.spotify, song.yt = finalDict[Tables.searchData.songID.value], finalDict[Tables.searchData.realName.value],  finalDict[Tables.searchData.spotify.value],  finalDict[Tables.searchData.youtube.value],
     song.spotify = song.spotify.decode()
     song.yt = song.yt.decode()
-    if not sqlPool.execute(f"SELECT _id from song_data where _id=\"{ID}\" and timestampdiff(HOUR, audio_url_created_at, now())<5 limit 1"):
+    if not sqlPool.execute(f"SELECT {Tables.songData.songID.value} from {Tables.songData.selfName.value} where {Tables.songData.songID.value}=\"{ID}\" and timestampdiff(HOUR, {Tables.songData.audioURLCreatedAt.value}, now())<5 limit 1"):
         r = fetchYTDLP("https://"+song.yt)
-        sqlPool.execute(f"UPDATE song_data set audio_url=\"{r['url']}\" where _id=\"{ID}\"")
-        sqlPool.execute(f"UPDATE song_data set audio_url_created_at=now() where _id=\"{ID}\"")
-    _, song.duration, song.thumbnail, song.audioURL, song.expiry = sqlPool.execute(f"SELECT * from song_data where _id=\"{ID}\" limit 1")[0]
+        sqlPool.execute(f"UPDATE {Tables.songData.selfName.value} set {Tables.songData.audioURL.value}=\"{r['url']}\" where {Tables.songData.songID.value}=\"{ID}\"")
+        sqlPool.execute(f"UPDATE {Tables.songData.selfName.value} set {Tables.songData.audioURLCreatedAt.value}=now() where {Tables.songData.songID.value}=\"{ID}\"")
+    finalDict = sqlPool.execute(f"SELECT * from song_data where {Tables.songData.songID.value}=\"{ID}\" limit 1")[0]
+    song.duration, song.thumbnail, song.audioURL, song.expiry = finalDict[Tables.songData.duration.value], finalDict[Tables.songData.thumbnail.value],  finalDict[Tables.songData.audioURL.value],  finalDict[Tables.songData.audioURLCreatedAt.value]
     song.thumbnail = song.thumbnail.decode()
     song.audioURL = song.audioURL.decode()
     return song.jsonify()
@@ -448,7 +494,7 @@ def process_form(viewerObj: BaseViewer, form: dict):
             songName = form["songName"]
             try:
                 sendStatus(viewerObj, f"Fetching Song ID for {songName}")
-                response = post(f"http://127.0.0.1:{Constants.storagePort.value}{storageRoutes.requestID.value}", data={"type": "name", "string": songName, "priority": 1}, timeout=20, auth=("bhaskar", "ItsAlwaysSage@69",))
+                response = post(f"http://127.0.0.1:{Constants.storagePort.value}{storageRoutes.requestID.value}", data={"string": songName, "priority": 1}, timeout=20, auth=("bhaskar", "Bhariya@1410",))
                 r: dict = response.json()
                 songID = r["songID"]
                 sendStatus(viewerObj, f"ID Fetched: {songID}")
@@ -458,7 +504,7 @@ def process_form(viewerObj: BaseViewer, form: dict):
                 return
             try:
                 sendStatus(viewerObj, f"Fetching data...")
-                response = post(f"http://127.0.0.1:{Constants.storagePort.value}{storageRoutes.requestData.value}", data={"id": songID}, timeout=20, auth=("bhaskar","ItsAlwaysSage@69",))
+                response = post(f"http://127.0.0.1:{Constants.storagePort.value}{storageRoutes.requestData.value}", data={"id": songID}, timeout=20, auth=("bhaskar","Bhariya@1410",))
                 r = response.json()
                 print(dumps(r, indent=4))
                 sendDebug(viewerObj, dumps(r, indent=4))
@@ -483,7 +529,7 @@ def sendAudioPlayer(viewerObj: BaseViewer, url):
 
 def sendForm(viewerObj: BaseViewer):
     data = f"""
-    <form id="songForm" onsubmit="return submit_ws(this) autocomplete="off">
+    <form id="songForm" onsubmit="return submit_ws(this)" autocomplete="off">
         {viewerObj.addCSRF("search")}
         <label for="songName">Song Name:</label><br>
         <input type="text" id="songName" name="songName"><br><br>
@@ -513,7 +559,7 @@ def newVisitor(viewerObj: BaseViewer):
     sendForm(viewerObj)
 
 
-baseApp, turboApp = createApps(process_form, newVisitor, appName, storageRoutes.home.value, storageRoutes.WSRoute.value, fernetKey, purposes, extraHeads)
+baseApp, turboApp = createApps(process_form, newVisitor, appName, storageRoutes.home.value, storageRoutes.WSRoute.value, fernetKey, extraHeads, "Player", False)
 
 
 @baseApp.route(f"{storageRoutes.requestID.value}", methods=['POST', "GET"])
@@ -523,7 +569,7 @@ def _get_song_id():
     else:
         received = request.args.to_dict()
     logger.info("ID-REQ", f"{received.get('type')} {received.get('string')}")
-    return fetchSongID(received.get("type"), received.get("string"), received.get("priority"))
+    return fetchSongID(received.get("string"), received.get("priority"))
 
 
 @baseApp.route(f"{storageRoutes.requestData.value}", methods=['POST', "GET"])
